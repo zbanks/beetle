@@ -1,0 +1,6 @@
+[submodule "doitlive"]
+	path = doitlive
+	url = git@github.com:zbanks/doitlive
+[submodule "grassroots"]
+	path = grassroots
+	url = git@github.com:zbanks/grassroots
