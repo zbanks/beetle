@@ -26,7 +26,7 @@ class LightStrip(gr.Blade, doitlive.SafeRefreshMixin):
 
     def __init__(self, sid):
         self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(20)]
-        self.sid = int(sid)
+        self.sid = sid
         self.update()
 
     def update(self):
@@ -42,7 +42,6 @@ class Beetle(doitlive.SafeRefreshableLoop):
         time.sleep(0.5)
 
 class BeetleUI(gr.Blade, doitlive.SafeRefreshMixin):
-    strips = gr.BladeListField("LightStrip")
     tick = gr.Field(0)
     color = gr.Field("rgb(100,30,50)")
 
