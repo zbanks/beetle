@@ -3,8 +3,21 @@
 
     var LightStripView = Backbone.View.extend({
         render: function(){
-            this.$el.empty().append(_.map(this.model.get('colors'), function(color){
-                return $("<span>").css('background-color', color).width(10).height(10);
+            this.$el.text(this.model.get('sid'))
+                    .append(_.map(this.model.get('html_colors'), function(color){
+                return $("<span>").width(10).height(10).css("display", "inline-block").css('background-color', color);
+            }));
+            return this;
+        }
+    });
+
+    var LightStripsView = Backbone.View.extend({
+        render: function(){
+            this.$el.empty().append(this.collection.map(function(strip){
+                var $stripEl = $("<div>");
+                var v = new LightStripView({ el: $stripEl, model: strip});
+                v.render();
+                return $stripEl;
             }));
             return this;
         }
@@ -16,39 +29,35 @@
             $(".error").text("No BeetleUI object loaded");
             return;
         }
-        console.log(root);
-
-        buis = new root.Collections.BeetleUI();
-        buis.fetch({
-            success: function(){
-                console.log(buis);
-                ui = buis.at(0);
-                Backbone.trigger("uiLoaded", ui);
-            }
-        });
+        Backbone.trigger("do-refresh");
     });
 
-    Backbone.listenToOnce(Backbone, "uiLoaded", function(ui){
+    Backbone.listenToOnce(Backbone, "refreshed", function(ui){
         $(".content").text("Loaded UI.");
+        window.ui = ui = root.all.get("BeetleUI").at(0);
         window.ui = ui;
 
         ui.on("change:color", function(){
             $(".content").css("background-color", ui.get('color'));
-        }).trigger("change:color");
+        })
 
         ui.on("change:tick", function(model, value){
             $(".content").text("Tick: " + value);
-
         });
 
-        Backbone.trigger("do-refresh");
+        lsv = new LightStripsView({ collection: root.all.get("LightStrip"), el: "div.strip" });
+        lsv.render();
+
     });
 
-    Backbone.listenTo("do-refresh", function(){
+    Backbone.on("do-refresh", function(){
         if(!window.noRefresh){
-            root.all.get('BeetleUI').fetch();
-            root.all.get('LightStrip').fetch();
-            window.setTimeout(function(){ Backbone.trigger('do-refresh'); }, 500);
+            root.all.get('BeetleUI').fetch().always(function(){
+                root.all.get('LightStrip').fetch().always(function(){
+                    Backbone.trigger("refreshed");
+                    window.setTimeout(function(){ Backbone.trigger('do-refresh'); }, 500);
+                });
+            });
         }
     });
 //})();

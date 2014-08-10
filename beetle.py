@@ -17,13 +17,16 @@ class Color(object):
 
     @property
     def html_rgb(self):
-        return "rgb({}, {}, {})".format(self.r * 255, self.g * 255, self.b * 255)
+        f = lambda x: int(round(x * 255))
+        return "rgb({}, {}, {})".format(f(self.r), f(self.g), f(self.b))
 
 class LightStrip(gr.Blade, doitlive.SafeRefreshMixin):
     html_colors = gr.Field([])
+    sid = gr.Field(0)
 
-    def __init__(self):
+    def __init__(self, sid):
         self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(20)]
+        self.sid = int(sid)
         self.update()
 
     def update(self):
@@ -38,14 +41,13 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.ui.tick += 1
         time.sleep(0.5)
 
-
 class BeetleUI(gr.Blade, doitlive.SafeRefreshMixin):
     strips = gr.BladeListField("LightStrip")
     tick = gr.Field(0)
     color = gr.Field("rgb(100,30,50)")
 
     def __init__(self):
-        self.strips = [LightStrip() for i in range(10)]
+        self.strips = [LightStrip(i) for i in range(10)]
 
 def setup():
     ui = BeetleUI()
