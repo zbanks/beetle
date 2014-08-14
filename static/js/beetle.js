@@ -29,6 +29,7 @@
             $(".error").text("No BeetleUI object loaded");
             return;
         }
+        root.all.get('LightStrip').comparator = "sid";
         Backbone.trigger("do-refresh");
     });
 
@@ -45,17 +46,31 @@
             $(".content").text("Tick: " + value);
         });
 
+        ui.on("change:spectrum", function(model, value){
+            $(".spectrum").text(value);
+        });
+
         lsv = new LightStripsView({ collection: root.all.get("LightStrip"), el: "div.strip" });
+        Backbone.listenTo(root.all.get("LightStrip"), "change", function(){
+            lsv.render();
+        });
         lsv.render();
 
     });
 
     Backbone.on("do-refresh", function(){
         if(!window.noRefresh){
-            root.all.get('BeetleUI').fetch().always(function(){
-                root.all.get('LightStrip').fetch().always(function(){
+            var failFn = function(response){
+                var backoff = root.get("backoff");
+                backoff = Math.min(backoff * 2, 10000);
+                root.set("backoff", backoff);
+                Backbone.trigger("lost-connection");
+                return response;
+            };
+            root.all.get('BeetleUI').fetch().fail(failFn).always(function(){
+                root.all.get('LightStrip').fetch().fail(failFn).always(function(){
                     Backbone.trigger("refreshed");
-                    window.setTimeout(function(){ Backbone.trigger('do-refresh'); }, 500);
+                    window.setTimeout(function(){ Backbone.trigger('do-refresh'); }, root.get("backoff"));
                 });
             });
         }
