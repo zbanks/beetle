@@ -12,7 +12,7 @@ import doitlive
 from grassroots import grassroots as gr
 
 class Color(object):
-    def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None):
+    def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None, a=1.0):
         self.r = r
         self.g = g
         self.b = b
@@ -20,6 +20,8 @@ class Color(object):
         self.h = h
         self.s = s
         self.v = v
+
+        self.a = a
 
         if r is None and g is None and b is None:
             self.rgb_from_hsv()
@@ -46,30 +48,51 @@ class Color(object):
     def rgb_from_hsv(self):
         self.r, self.g, self.b = colorsys.hsv_to_rgb(self.h, self.s, self.v)
 
+    def __str__(self):
+        return self.html_rgb
+
+    def __repr__(self):
+        return self.html_rgb
+
     @property
     def html_rgb(self):
         f = lambda x: int(round(x * 255))
         return "rgb({}, {}, {})".format(f(self.r), f(self.g), f(self.b))
 
+from projection import *
+
 class LightStrip(gr.Blade):
     html_colors = gr.Field([])
     sid = gr.Field(0)
+    copies = gr.Field(1)
 
-    def __init__(self, sid):
-        self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(20)]
+    def __init__(self, sid, length=20, copies=1):
+        self.length = length
+        self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(self.length)]
         self.sid = sid
+        self.copies = copies
         self.update()
 
     def update(self):
         self.html_colors = [c.html_rgb for c in self.colors]
 
 def diode_lpf(data,mem,alpha):
+    if mem is None: mem = data
     if data>mem:
         return data
-    return mem+alpha*(data-mem)
+    result = mem+alpha*(data-mem)
+    return result, result
 
 def lpf(data,mem,alpha):
-    return mem+alpha*(data-mem)
+    if mem is None: mem = data
+    result = mem+alpha*(data-mem)
+    return result, result
+
+def sfilter(channel, fn, data, **kwargs):
+    history = sfilter.history.get(channel)
+    data, history = fn(data, history, **kwargs)
+    sfilter.history[channel] = history
+sfilter.history = {}
 
 class Beetle(doitlive.SafeRefreshableLoop):
     STRIP_LENGTH=50
@@ -79,7 +102,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
     RATE = 48000
     HISTORY_SIZE = 500
 
-    RANGES = [(20,180),(200,1200),(1200,2400),(2400,1200)]
+    RANGES = [(20,200),(200,1200),(1200,2400),(2400,1200)]
     TAU_LPF = .1
     COLOR_PERIOD = 60
 
@@ -92,6 +115,8 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.smooth_dict = {}
         self.history=collections.deque()
         self.lpf_audio=[0]*len(self.RANGES)
+        self.i = 0
+        self.projection = Plane()
         super(doitlive.SafeRefreshableLoop, self).__init__(*args, **kwargs)
 
     def smooth(self, key, now, alpha=0.1, fn=None):
@@ -116,7 +141,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         dom_freq = self.RATE * dom_chk / self.CHUNK
         #self.dom_freq = dom_freq
 
-        dom_freq = self.smooth("dom_freq", dom_freq, 0.161, fn=lpf) #self.inp(14, 10) / 500.0)
+        dom_freq = sfilter("dom_freq", dom_freq, fn=lpf, alpha=0.161) #self.inp(14, 10) / 500.0)
         #sys.stdout.write("\rdom_freq %d" % dom_freq)
 
         octave = 2.0 ** math.floor(math.log(dom_freq) / math.log(2))
@@ -134,28 +159,36 @@ class Beetle(doitlive.SafeRefreshableLoop):
 
         levels=[a/f for a,f in zip(self.lpf_audio,scaling_factor)]
         bass_val = max(min((levels[0]-0.1)/0.9,1.), 0.0)
-        bass_val = self.smooth("bass_val", bass_val, 0.53, fn=lpf)
+        bass_val = sfilter("bass_val", bass_val, alpha=0.53, fn=lpf)
         bass_hue = (self.hue + 0.95) % 1.0
         if bass_val < 0.0: # Switch colors for low bass values
             bass_hue = (bass_hue + 0.9) % 1.0
             bass_val *= 1.0
 
-        bass_val = max(bass_val ** 1.45 / 2.3 , 0.0)
+        bass_val = max(bass_val ** 1.45 , 0.0)
 
         bass_color= Color(h=bass_hue, s=1., v=bass_val )
         treble_color= Color(h=self.hue, s=0.7 ,v=0.9 )
 
         #treble_size = (0.5-0.3*levels[1]) 
-        treble_size = self.smooth("treble_size", levels[1] / 2.0, 0.9, fn=lpf)
-        treble_size = 1;
+        treble_size = sfilter("treble_size", levels[1] , alpha=0.9, fn=diode_lpf)
+
+        self.projection.effects = [eff_diamond(bass_color, Point(0.4, 0.4), treble_size * 5),
+                                   eff_diamond(treble_color, Point(0.5, 0.5), treble_size * 3)]
+
         #treble_size = levels[1]
         #time.sleep(0.5)
-        strip = self.strips[0]
-        strip.colors = [bass_color for i in range(20)]
-        strip.update()
-        strip = self.strips[1]
-        strip.colors = [treble_color for i in range(20)]
-        strip.update()
+        #self.i = (self.i + 1) % len(self.strips)
+        #strip.colors = [bass_color for i in range(20)]
+        #strip.colors[:treble_size] = [treble_color for i in range(treble_size)]
+        #strip.update()
+        for i, strip in enumerate(self.strips):
+            strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
+            strip.update()
+
+        #strip = self.strips[1]
+        #strip.colors = [treble_color for i in range(20)]
+        #strip.update()
         self.ui.debug = str(bass_color)
 
     def init_audio(self):

@@ -5,7 +5,7 @@
         render: function(){
             this.$el.text(this.model.get('sid'))
                     .append(_.map(this.model.get('html_colors'), function(color){
-                return $("<span>").width(10).height(10).css("display", "inline-block").css('background-color', color);
+                return $("<span>").width(20).height(15).css("display", "inline-block").css('background-color', color);
             }));
             return this;
         }
