@@ -15,7 +15,7 @@ class DemoLightApp(gr.Blade, doitlive.SafeRefreshableLoop):
     STATICS = ["tick"]
 
     def __init__(self, *args, **kwargs):
-        self.strips = [LightStrip(i) for i in range(4)]
+        self.strips = [LightStrip(i, length=50) for i in range(4)]
         self.tick = 0
         self.rising = False
         super(doitlive.SafeRefreshableLoop, self).__init__(*args, **kwargs)

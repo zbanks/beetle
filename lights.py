@@ -59,7 +59,7 @@ class LightStrip(gr.Blade):
 
     def __init__(self, sid, length=20, copies=1):
         self.length = length
-        self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(self.length)]
+        self.colors = [Color(r=i / float(self.length), g=0.2, b=0.2) for i in range(self.length)]
         self.sid = sid
         self.copies = copies
 
