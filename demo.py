@@ -12,6 +12,7 @@ from lights import *
 
 class DemoLightApp(gr.Blade, doitlive.SafeRefreshableLoop):
     tick = gr.Field(0)
+    STATICS = ["tick"]
 
     def __init__(self, *args, **kwargs):
         self.strips = [LightStrip(i) for i in range(4)]
@@ -23,6 +24,7 @@ class DemoLightApp(gr.Blade, doitlive.SafeRefreshableLoop):
         self.tick += 1
         self.strips[0].colors[0].r = (self.tick % 256) / 255.
         time.sleep(0.01)
+
 
 def setup():
     demoapp = DemoLightApp()

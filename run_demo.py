@@ -3,7 +3,7 @@ from demo import *
 
 def main():
     demoapp, groot, webthread = setup()
-    d = demoapp
+    d = demo = demoapp
     webthread.start()
     stop = lambda: webthread.stop()
     variables = locals()
