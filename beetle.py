@@ -1,5 +1,3 @@
-import IPython
-import colorsys
 import collections
 import math
 import numpy
@@ -11,75 +9,13 @@ import time
 import doitlive
 from grassroots import grassroots as gr
 
-class Color(object):
-    def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None, a=1.0):
-        self.r = r
-        self.g = g
-        self.b = b
-
-        self.h = h
-        self.s = s
-        self.v = v
-
-        self.a = a
-
-        if r is None and g is None and b is None:
-            self.rgb_from_hsv()
-        if h is None and s is None and v is None:
-            self.hsv_from_rgb()
-        if any([x is None for x in [self.h, self.s, self.v, self.r, self.g, self.b]]):
-            raise ValueError("Invalid color specification.")
-
-    def set_rgb(self, r, g, b):
-        self.r = r
-        self.g = g
-        self.b = b
-        self.hsv_from_rgb()
-
-    def set_hsv(self, h, s, v):
-        self.h = h
-        self.s = s
-        self.v = v
-        self.rgb_from_hsv()
-
-    def hsv_from_rgb(self):
-        self.h, self.s, self.v = colorsys.hsv_to_rgb(self.r, self.g, self.b)
-
-    def rgb_from_hsv(self):
-        self.r, self.g, self.b = colorsys.hsv_to_rgb(self.h, self.s, self.v)
-
-    def __str__(self):
-        return self.html_rgb
-
-    def __repr__(self):
-        return self.html_rgb
-
-    @property
-    def html_rgb(self):
-        f = lambda x: int(round(x * 255))
-        return "rgb({}, {}, {})".format(f(self.r), f(self.g), f(self.b))
-
 from projection import *
-
-class LightStrip(gr.Blade):
-    html_colors = gr.Field([])
-    sid = gr.Field(0)
-    copies = gr.Field(1)
-
-    def __init__(self, sid, length=20, copies=1):
-        self.length = length
-        self.colors = [Color(r=i / 20., g=0.2, b=0.2) for i in range(self.length)]
-        self.sid = sid
-        self.copies = copies
-        self.update()
-
-    def update(self):
-        self.html_colors = [c.html_rgb for c in self.colors]
+from lights import *
 
 def diode_lpf(data,mem,alpha):
     if mem is None: mem = data
     if data>mem:
-        return data
+        return data, data
     result = mem+alpha*(data-mem)
     return result, result
 
@@ -92,6 +28,7 @@ def sfilter(channel, fn, data, **kwargs):
     history = sfilter.history.get(channel)
     data, history = fn(data, history, **kwargs)
     sfilter.history[channel] = history
+    return data
 sfilter.history = {}
 
 class Beetle(doitlive.SafeRefreshableLoop):
@@ -141,7 +78,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         dom_freq = self.RATE * dom_chk / self.CHUNK
         #self.dom_freq = dom_freq
 
-        dom_freq = sfilter("dom_freq", dom_freq, fn=lpf, alpha=0.161) #self.inp(14, 10) / 500.0)
+        dom_freq = sfilter("dom_freq", data=dom_freq, fn=lpf, alpha=0.161) #self.inp(14, 10) / 500.0)
         #sys.stdout.write("\rdom_freq %d" % dom_freq)
 
         octave = 2.0 ** math.floor(math.log(dom_freq) / math.log(2))
@@ -149,7 +86,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.hue = ((dom_freq - octave) / octave)
         self.hue = self.hue % 1.0
 
-        self.lpf_audio=[lpf(float(data),mem,self.alpha) for data,mem in zip(audio,self.lpf_audio)]
+        self.lpf_audio=[lpf(float(data),mem,alpha=self.alpha)[0] for data,mem in zip(audio,self.lpf_audio)]
 
         self.history.append(self.lpf_audio)
         if len(self.history)>self.HISTORY_SIZE:
@@ -159,7 +96,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
 
         levels=[a/f for a,f in zip(self.lpf_audio,scaling_factor)]
         bass_val = max(min((levels[0]-0.1)/0.9,1.), 0.0)
-        bass_val = sfilter("bass_val", bass_val, alpha=0.53, fn=lpf)
+        bass_val = sfilter("bass_val", data=bass_val, alpha=0.53, fn=lpf)
         bass_hue = (self.hue + 0.95) % 1.0
         if bass_val < 0.0: # Switch colors for low bass values
             bass_hue = (bass_hue + 0.9) % 1.0
@@ -171,7 +108,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         treble_color= Color(h=self.hue, s=0.7 ,v=0.9 )
 
         #treble_size = (0.5-0.3*levels[1]) 
-        treble_size = sfilter("treble_size", levels[1] , alpha=0.9, fn=diode_lpf)
+        treble_size = sfilter("treble_size", data=levels[1] , alpha=0.9, fn=diode_lpf)
 
         self.projection.effects = [eff_diamond(bass_color, Point(0.4, 0.4), treble_size * 5),
                                    eff_diamond(treble_color, Point(0.5, 0.5), treble_size * 3)]
@@ -181,14 +118,11 @@ class Beetle(doitlive.SafeRefreshableLoop):
         #self.i = (self.i + 1) % len(self.strips)
         #strip.colors = [bass_color for i in range(20)]
         #strip.colors[:treble_size] = [treble_color for i in range(treble_size)]
-        #strip.update()
         for i, strip in enumerate(self.strips):
             strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
-            strip.update()
 
         #strip = self.strips[1]
         #strip.colors = [treble_color for i in range(20)]
-        #strip.update()
         self.ui.debug = str(bass_color)
 
     def init_audio(self):
@@ -234,12 +168,6 @@ class Beetle(doitlive.SafeRefreshableLoop):
         for s in range(spec_max)[::7]:
             freq = int(self.RATE * s / self.CHUNK)
             self.ui.spectrum += ("|{: <6}".format(freq))
-
-    def pre_refresh(self):
-        self.old_id = id(self)
-
-    def post_refresh(self):
-        print self.old_id, id(self)
 
 class BeetleUI(gr.Blade):
     tick = gr.Field(0)
