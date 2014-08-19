@@ -1,11 +1,17 @@
 import IPython
-import colorsys
 import collections
+import colorsys
+import copy
 import math
+import struct
 
 from grassroots import grassroots as gr 
 
+def rng(x):
+    return min(1.0, max(0.0, x))
+
 class Color(object):
+    __slots__ = ["r", "g", "b", "h", "s", "v", "a"]
     def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None, a=1.0):
         self.r = r
         self.g = g
@@ -23,6 +29,36 @@ class Color(object):
             self.hsv_from_rgb()
         if any([x is None for x in [self.h, self.s, self.v, self.r, self.g, self.b]]):
             raise ValueError("Invalid color specification.")
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def mix_onbg(self, oc):
+        blend = lambda t, b: rng((t * self.a) + (b * (1.0 - self.a)))
+        alpha = (1 - (1 - self.a) * (1 - oc.a))
+        return Color(r=blend(self.r, oc.r), g=blend(self.g, oc.g), b=blend(self.b, oc.b), a=alpha)
+
+    def mix_add(self, oc):
+        blend = lambda t, b: rng((t * self.a) + b)
+        alpha = oc.a
+        return Color(r=blend(self.r, oc.r), g=blend(self.g, oc.g), b=blend(self.b, oc.b), a=alpha)
+
+    def mix_sub(self, oc):
+        blend = lambda t, b: rng(b - (t * self.a))
+        alpha = oc.a
+        return Color(r=blend(self.r, oc.r), g=blend(self.g, oc.g), b=blend(self.b, oc.b), a=alpha)
+
+    def mix_addhue(self, oc):
+        blend = lambda t, b: rng((t * self.a) + (b * (1.0 - self.a)))
+        alpha = (1 - (1 - self.a) * (1 - oc.a))
+        hue = (self.h + oc.h) % 1.0
+        return Color(h=hue, s=blend(self.s, oc.s), v=blend(self.v, oc.v), a=alpha)
+
+    def mix_takehue(self, oc):
+        blend = lambda t, b: rng((t * self.a) + (b * (1.0 - self.a)))
+        alpha = (1 - (1 - self.a) * (1 - oc.a))
+        hue = self.h
+        return Color(h=hue, s=blend(self.s, oc.s), v=blend(self.v, oc.v), a=alpha)
 
     def set_rgb(self, r, g, b):
         self.r = r
@@ -42,6 +78,10 @@ class Color(object):
     def rgb_from_hsv(self):
         self.r, self.g, self.b = colorsys.hsv_to_rgb(self.h, self.s, self.v)
 
+    def hw_export(self):
+        #TODO: export to 15-bit RGB
+        return self.html_rgb
+
     def __str__(self):
         return self.html_rgb
 
@@ -50,8 +90,9 @@ class Color(object):
 
     @property
     def html_rgb(self):
-        f = lambda x: int(round(x * 255))
+        f = lambda x: int(round(x * 255 * self.a))
         return "rgb({}, {}, {})".format(f(self.r), f(self.g), f(self.b))
+
 
 class LightStrip(gr.Blade):
     sid = gr.Field(0)

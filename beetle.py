@@ -9,6 +9,9 @@ import time
 import doitlive
 from grassroots import grassroots as gr
 
+import projection
+import lights
+
 from projection import *
 from lights import *
 
@@ -110,8 +113,15 @@ class Beetle(doitlive.SafeRefreshableLoop):
         #treble_size = (0.5-0.3*levels[1]) 
         treble_size = sfilter("treble_size", data=levels[1] , alpha=0.9, fn=diode_lpf)
 
-        self.projection.effects = [eff_diamond(bass_color, Point(0.4, 0.4), treble_size * 5),
-                                   eff_diamond(treble_color, Point(0.5, 0.5), treble_size * 3)]
+        self.projection.state["time"] = time.time()
+
+        self.projection.effects = [eff_solid(Color(r=0.8, g=0.2, b=0.2, a=0.8)),
+                                   #eff_circle(bass_color, Point(0.4, 0.4), treble_size * 5),
+                                   eff_circle(treble_color, Point(0.5, 0.5), treble_size * 3),
+                                   eff_plane(treble_color, Point(0.5, 0.5), Point(0.5, 0.5)),
+                                   eff_rainbow(Point(0.5, 0.5), 20),
+                                   eff_colorout(Color(0.0, 0.0, 0.0), "black"),
+                                   ]
 
         #treble_size = levels[1]
         #time.sleep(0.5)
@@ -168,6 +178,11 @@ class Beetle(doitlive.SafeRefreshableLoop):
         for s in range(spec_max)[::7]:
             freq = int(self.RATE * s / self.CHUNK)
             self.ui.spectrum += ("|{: <6}".format(freq))
+
+    def pre_refresh(self):
+        reload(projection)
+        reload(lights)
+        reload(doitlive)
 
 class BeetleUI(gr.Blade):
     tick = gr.Field(0)
