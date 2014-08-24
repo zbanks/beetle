@@ -47,8 +47,9 @@ class Beetle(doitlive.SafeRefreshableLoop):
     COLOR_PERIOD = 60
 
     def __init__(self, ui, *args, **kwargs):
+        self.b = []
         self.ui = ui
-        self.strips = [LightStrip(i) for i in range(10)]
+        self.strips = [LightStrip(i) for i in range(7)]
         self.init_audio()
         self.min_fbin = 20
         self.alpha = 1.0
@@ -67,6 +68,27 @@ class Beetle(doitlive.SafeRefreshableLoop):
         output = fn(now, self.smooth_dict[key], alpha)
         self.smooth_dict[key]  = output
         return output
+
+    def strip_config(self):
+        self.strips[0].points = [(Point(0, 0.2), 25), 
+                                 (Point(0.2, 0.2), 25),
+                                 (Point(0.4, 0.2), 0)]
+        self.strips[0].sid = 0
+
+    def render_strips(self):
+        self.projection.render_strip(self.strips[0])
+        for i, strip in enumerate(self.strips[1:]):
+            strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
+
+    def hw_export_strips(self):
+        for strip in self.strips:
+            for d in self.b:
+                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0xff))
+
+        for d in self.b:
+            d.framed_packet((CMD_SYNC,0))
+        for d in self.b:
+            d.flush()
 
     def step(self):
         self.ui.tick += 1
@@ -128,8 +150,6 @@ class Beetle(doitlive.SafeRefreshableLoop):
         #self.i = (self.i + 1) % len(self.strips)
         #strip.colors = [bass_color for i in range(20)]
         #strip.colors[:treble_size] = [treble_color for i in range(treble_size)]
-        for i, strip in enumerate(self.strips):
-            strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
 
         #strip = self.strips[1]
         #strip.colors = [treble_color for i in range(20)]
@@ -183,6 +203,23 @@ class Beetle(doitlive.SafeRefreshableLoop):
         reload(projection)
         reload(lights)
         reload(doitlive)
+
+    def enumerate_devices(self):
+        self.free_devices()
+        self.b = []
+        for i in range(10):
+            try:
+                self.b.append(SingleBespeckleDevice('/dev/ttyUSB%d' % i, 115200))
+                if len(b) >= 4:
+                    break
+            except:
+                pass
+        print "Enumerated {0} devices.".format(len(self.b))
+
+    def free_devices(self):
+        for b in self.b:
+            b.close()
+        self.b = []
 
 class BeetleUI(gr.Blade):
     tick = gr.Field(0)

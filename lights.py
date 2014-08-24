@@ -80,7 +80,14 @@ class Color(object):
 
     def hw_export(self):
         #TODO: export to 15-bit RGB
-        return self.html_rgb
+        return 0x8000 | self.hw_b(self.b) | self.hw_g(self.g) | self.hw_r(self.r)
+
+    def hw_r(self, r):
+        return (r * 0x1F) & 0x1F
+    def hw_g(self, g):
+        return (g * 0x1F) & 0x1F
+    def hw_b(self, b):
+        return (b * 0x1F) & 0x1F
 
     def __str__(self):
         return self.html_rgb
@@ -97,16 +104,26 @@ class Color(object):
 class LightStrip(gr.Blade):
     sid = gr.Field(0)
     copies = gr.Field(1)
+    points = gr.Field([])
 
-    def __init__(self, sid, length=20, copies=1):
+    def __init__(self, sid, length=20, copies=1, points=None):
         self.length = length
         self.colors = [Color(r=i / float(self.length), g=0.2, b=0.2) for i in range(self.length)]
         self.sid = sid
         self.copies = copies
+        self.points = points 
 
     @gr.PropertyField
     def html_colors(self):
         return [c.html_rgb for c in self.colors]
+
+    def hw_export(self):
+        output = []
+        for color in self.colors:
+            h = color.hw_export()
+            output.append((h >> 8) & 0xFF)
+            output.append(h & 0xFF)
+        return output
 
     def __repr__(self):
         return "<LightStrip: id={}, len={}>".format(self.sid, len(self))

@@ -107,3 +107,12 @@ class Plane(gr.Blade):
     def render_at(self, point):
         # Renders a single point by applying effects stack
         return reduce(lambda color, fn: fn(color, point, self.state), self.effects, self.background_color)
+
+    def render_strip(self, strip):
+        pairs = zip(s, s[1:])
+        colors = []
+        for (start, l), (end, _l) in pairs:
+            colors.append(render(start, end, l))
+        strip.colors = colors
+
+
