@@ -10,6 +10,9 @@ from grassroots import grassroots as gr
 def rng(x):
     return min(1.0, max(0.0, x))
 
+def intr(x):
+    return int(round(x))
+
 class Color(object):
     __slots__ = ["r", "g", "b", "h", "s", "v", "a"]
     def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None, a=1.0):
@@ -80,14 +83,14 @@ class Color(object):
 
     def hw_export(self):
         #TODO: export to 15-bit RGB
-        return 0x8000 | self.hw_b(self.b) | self.hw_g(self.g) | self.hw_r(self.r)
+        return 0x8000 | (self.hw_b(self.b) << 10) | (self.hw_g(self.g)) | (self.hw_r(self.r) << 5)
 
     def hw_r(self, r):
-        return (r * 0x1F) & 0x1F
+        return intr(self.a * r ** 2.2 * 0x1F)  & 0x1f
     def hw_g(self, g):
-        return (g * 0x1F) & 0x1F
+        return intr(self.a * g  ** 3.0* 0x1F) & 0x1f
     def hw_b(self, b):
-        return (b * 0x1F) & 0x1F
+        return intr(self.a * b ** 3.0 * 0x1F) & 0x1f
 
     def __str__(self):
         return self.html_rgb
@@ -121,8 +124,8 @@ class LightStrip(gr.Blade):
         output = []
         for color in self.colors:
             h = color.hw_export()
-            output.append((h >> 8) & 0xFF)
             output.append(h & 0xFF)
+            output.append((h >> 8) & 0xFF)
         return output
 
     def __repr__(self):

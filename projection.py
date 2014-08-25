@@ -21,6 +21,17 @@ def points_along(start, end, length):
     return [Point(x=sx + dx * i, y=sy + dy * i) for i in range(length)]
     
 
+def eff_sine(color, point, rate):
+    mc = color.copy()
+    alpha = mc.a
+    def d(c, p, state):
+        rad = ((p.x - point.x) ** 2 + (p.y - point.y) ** 2) ** 0.5
+        rads = rng(rad / float(rate + 0.1) ** 2)
+        mc.a = alpha * math.sin(rads)
+        return  mc.mix_onbg(c)
+
+
+
 def eff_diamond(color, point, size):
     def d(c, p, state):
         if abs(p.x - point.x) + abs(p.y - point.y) <= size:
@@ -33,7 +44,7 @@ def eff_circle(color, point, size):
     alpha = mc.a
     def d(c, p, state):
         rad = (p.x - point.x) ** 2 + (p.y - point.y) ** 2
-        rads = rng(rad / float(size) ** 2)
+        rads = rng(rad / float(size + 0.1) ** 2)
         mc.a = alpha * (1.0 - rads)
         return mc.mix_onbg(c)
     return d
@@ -56,13 +67,14 @@ def eff_solid(color):
         return color.mix_onbg(c)
     return d
 
-def eff_rainbow(vector, rate=5.):
+def eff_rainbow(vector, rate=5., alpha=1.0):
     def d(c, p, state):
         time = state.get("time", 0.)
         offset = (time / float(rate))
         hue = ((p.x - offset * vector.x) + (p.y - offset * vector.y)) % 1.0
-        mc = Color(h = hue, s=1.0, v=1.0, a=0.5)
-        return mc.mix_addhue(c)
+        hue = 1.0 - hue
+        mc = Color(h = hue, s=1.0, v=1.0, a=alpha)
+        return mc.mix_onbg(c)
     return d
 
 def eff_colorout(color, key, rate=0.05):
@@ -109,10 +121,12 @@ class Plane(gr.Blade):
         return reduce(lambda color, fn: fn(color, point, self.state), self.effects, self.background_color)
 
     def render_strip(self, strip):
-        pairs = zip(s, s[1:])
-        colors = []
-        for (start, l), (end, _l) in pairs:
-            colors.append(render(start, end, l))
-        strip.colors = colors
+        s = strip.points
+        if s is not None:
+            pairs = zip(s, s[1:])
+            colors = []
+            for (start, l), (end, _l) in pairs:
+                colors += self.render(start, end, l)
+            strip.colors = colors
 
 

@@ -5,12 +5,15 @@ import pyaudio
 import struct
 import threading
 import time
+from pygame import midi 
+import traceback
 
 import doitlive
 from grassroots import grassroots as gr
 
 import projection
 import lights
+import devices
 
 from projection import *
 from lights import *
@@ -34,6 +37,10 @@ def sfilter(channel, fn, data, **kwargs):
     return data
 sfilter.history = {}
 
+MIDI_NAMES = {
+    "k0": 16,
+}
+
 class Beetle(doitlive.SafeRefreshableLoop):
     STRIP_LENGTH=50
     CHUNK = 1024
@@ -49,16 +56,47 @@ class Beetle(doitlive.SafeRefreshableLoop):
     def __init__(self, ui, *args, **kwargs):
         self.b = []
         self.ui = ui
-        self.strips = [LightStrip(i) for i in range(7)]
+        self.strips = [LightStrip(i) for i in range(2)]
         self.init_audio()
-        self.min_fbin = 20
+        self.min_fbin = 30
         self.alpha = 1.0
         self.smooth_dict = {}
         self.history=collections.deque()
         self.lpf_audio=[0]*len(self.RANGES)
         self.i = 0
         self.projection = Plane()
+        self.strip_config()
+        self.enumerate_devices()
+        midi.init()
+        self.mi = None
+        try:
+            self.mi = midi.Input(3)
+        except:
+            traceback.print_exc()
+            print "Can't find midi. Continuing..."
+        self.mstat = {}
         super(doitlive.SafeRefreshableLoop, self).__init__(*args, **kwargs)
+
+    def read_midi_events(self):
+        if not self.mi:
+            return
+        for ev in self.mi.read(100):
+            if len(ev[0]) == 4 and ev[0][0] == 176:
+                if ev[0][1] in MIDI_NAMES:
+                    self.mstat[MIDI_NAMES[ev[0][1]]] = ev[0][2]
+                else:
+                    self.mstat[ev[0][1]] = ev[0][2]
+
+    def inp(self, name, default=0):
+        if name in self.mstat:
+            return self.mstat[name]
+        return default
+
+    def unsaturate(self):
+        h = self.history[-1]
+        self.history = collections.deque()
+        for i in range(self.HISTORY_SIZE):
+            self.history.append(h)
 
     def smooth(self, key, now, alpha=0.1, fn=None):
         if not fn:
@@ -70,23 +108,26 @@ class Beetle(doitlive.SafeRefreshableLoop):
         return output
 
     def strip_config(self):
-        self.strips[0].points = [(Point(0, 0.2), 25), 
-                                 (Point(0.2, 0.2), 25),
-                                 (Point(0.4, 0.2), 0)]
-        self.strips[0].sid = 0
+        self.strips[0].points = [(Point(0.4, 0.0), 50), 
+                                 (Point(0.4, 1.0), 0)] 
+        self.strips[0].sid = 0x10
+        self.strips[1].points = [(Point(0.6, 0.0), 50), 
+                                 (Point(0.6, 1.0), 0)] 
+        self.strips[1].sid = 0x20
 
     def render_strips(self):
-        self.projection.render_strip(self.strips[0])
-        for i, strip in enumerate(self.strips[1:]):
-            strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
+        #self.projection.render_strip(self.strips[0])
+        for strip in self.strips:
+            self.projection.render_strip(strip)
+        #self.projection.render_strip(self.strips[0])
+        #for i, strip in enumerate(self.strips[1:]):
+            #strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
 
     def hw_export_strips(self):
         for strip in self.strips:
             for d in self.b:
-                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0xff))
-
-        for d in self.b:
-            d.framed_packet((CMD_SYNC,0))
+                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0x00)
+            break
         for d in self.b:
             d.flush()
 
@@ -95,7 +136,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         audio, fft = self.analyze_audio()
         self.write_spectrum(fft)
         def maxat(a): return max(enumerate(a), key=lambda x: x[1])[0] 
-        #self.read_midi_events()
+        self.read_midi_events()
 
         #self.mind =20 #self.inp(24, 4)
         mind = self.min_fbin
@@ -103,15 +144,17 @@ class Beetle(doitlive.SafeRefreshableLoop):
         dom_freq = self.RATE * dom_chk / self.CHUNK
         #self.dom_freq = dom_freq
 
-        dom_freq = sfilter("dom_freq", data=dom_freq, fn=lpf, alpha=0.161) #self.inp(14, 10) / 500.0)
+        dom_freq = sfilter("dom_freq", data=dom_freq, fn=lpf, alpha=0.02) #self.inp(14, 10) / 500.0)
         #sys.stdout.write("\rdom_freq %d" % dom_freq)
 
         octave = 2.0 ** math.floor(math.log(dom_freq) / math.log(2))
         self.octave = octave
         self.hue = ((dom_freq - octave) / octave)
         self.hue = self.hue % 1.0
+        self.hue = (self.hue + (self.inp(16) / 127.0)) % 1.0
+        self.hue = sfilter("hue", data=self.hue, alpha=0.02, fn=lpf)
 
-        self.lpf_audio=[lpf(float(data),mem,alpha=self.alpha)[0] for data,mem in zip(audio,self.lpf_audio)]
+        self.lpf_audio=[lpf(float(data),mem,alpha=0.2)[0] for data,mem in zip(audio,self.lpf_audio)]
 
         self.history.append(self.lpf_audio)
         if len(self.history)>self.HISTORY_SIZE:
@@ -121,7 +164,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
 
         levels=[a/f for a,f in zip(self.lpf_audio,scaling_factor)]
         bass_val = max(min((levels[0]-0.1)/0.9,1.), 0.0)
-        bass_val = sfilter("bass_val", data=bass_val, alpha=0.53, fn=lpf)
+        bass_val = sfilter("bass_val", data=bass_val, alpha=0.1, fn=lpf)
         bass_hue = (self.hue + 0.95) % 1.0
         if bass_val < 0.0: # Switch colors for low bass values
             bass_hue = (bass_hue + 0.9) % 1.0
@@ -129,21 +172,48 @@ class Beetle(doitlive.SafeRefreshableLoop):
 
         bass_val = max(bass_val ** 1.45 , 0.0)
 
-        bass_color= Color(h=bass_hue, s=1., v=bass_val )
-        treble_color= Color(h=self.hue, s=0.7 ,v=0.9 )
+        treble_color= Color(h=self.hue, s=1.0 ,v=1.0, a=0.9 )
+        bass_color= Color(h=bass_hue, s=1., v=bass_val, a=0.5)
 
         #treble_size = (0.5-0.3*levels[1]) 
-        treble_size = sfilter("treble_size", data=levels[1] , alpha=0.9, fn=diode_lpf)
+        treble_size = sfilter("treble_size", data=levels[1] , alpha=0.03, fn=diode_lpf)
 
         self.projection.state["time"] = time.time()
 
-        self.projection.effects = [eff_solid(Color(r=0.8, g=0.2, b=0.2, a=0.8)),
+        #bg_alpha = self.inp(32) / 127.0
+        treble_size *= self.inp(17) / 127.0
+        self.treble_size = treble_size
+        blackout = self.inp(0) / 127.0
+        whiteout = 1.0 - (self.inp(1) / 127.0)
+        whiteout_act = (self.inp(2) / 127.0)
+        solid_out = (self.inp(3) / 127.0)
+        bass_color.a = blackout
+        solid_color = treble_color.copy()
+        solid_color.a = solid_out
+
+        blackout_act = self.inp(6) / 127.0
+        blackout_act = sfilter("blackout", data=blackout_act, alpha=0.1, fn=diode_lpf)
+    
+
+        self.projection.effects = [eff_solid(bass_color),
                                    #eff_circle(bass_color, Point(0.4, 0.4), treble_size * 5),
-                                   eff_circle(treble_color, Point(0.5, 0.5), treble_size * 3),
-                                   eff_plane(treble_color, Point(0.5, 0.5), Point(0.5, 0.5)),
-                                   eff_rainbow(Point(0.5, 0.5), 20),
+                                   eff_circle(treble_color, Point(0.5, 0.5), treble_size ),
+                                   #eff_rainbow(Point(0.5, 0.5), 20),
                                    eff_colorout(Color(0.0, 0.0, 0.0), "black"),
+                                   eff_solid(Color(r=1.0, g=1.0, b=1.0, a=whiteout_act)),
+                                   eff_solid(solid_color),
+                                   #eff_solid(Color(r=0.0, g=0.0, b=0.0, a=whiteout)),
                                    ]
+        rainbow = self.inp(7) / 40.0 + 0.1
+        rainbow_alpha = self.inp(23) /127.0
+        if self.inp(71):
+            self.projection.effects.append(eff_rainbow(Point(0.5, 0.5), rainbow, alpha=rainbow_alpha))
+
+        amp = self.inp(22) / 127.0
+        if self.inp(55):
+            self.projection.effects.append(eff_sine(treble_color, Point(0.5, 0.5), amp))
+
+        self.projection.effects.append(eff_solid(Color(r=0.0, g=0.0, b=0.0, a=blackout_act)))
 
         #treble_size = levels[1]
         #time.sleep(0.5)
@@ -154,6 +224,8 @@ class Beetle(doitlive.SafeRefreshableLoop):
         #strip = self.strips[1]
         #strip.colors = [treble_color for i in range(20)]
         self.ui.debug = str(bass_color)
+        self.render_strips()
+        self.hw_export_strips()
 
     def init_audio(self):
         #pyaudio.pa.initialize(pyaudio.pa)
@@ -204,12 +276,15 @@ class Beetle(doitlive.SafeRefreshableLoop):
         reload(lights)
         reload(doitlive)
 
+    def post_refresh(self):
+        self.strip_config()
+
     def enumerate_devices(self):
         self.free_devices()
         self.b = []
         for i in range(10):
             try:
-                self.b.append(SingleBespeckleDevice('/dev/ttyUSB%d' % i, 115200))
+                self.b.append(devices.SingleBespeckleDevice('/dev/ttyUSB%d' % i, 3000000))
                 if len(b) >= 4:
                     break
             except:
