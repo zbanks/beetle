@@ -10,15 +10,18 @@ Point = collections.namedtuple("Point", ["x", "y"])
 # Vector is exactly the same, but it's more readable
 Vector = collections.namedtuple("Vector", ["x", "y"])
 
+def norm(v):
+    return (v.x ** 2 + v.y ** 2) ** 0.5
+
 def points_along(start, end, length):
     if length == 1:
         # Return the midpoint 
         return Point(x=(start.x + end.x)/2, y=(start.y + end.y)/2)
-    dx = (end.x - start.x) / float(length - 1)
-    dy = (end.y - start.y) / float(length - 1)
+    dx = (end.x - start.x) / float(length + 1)
+    dy = (end.y - start.y) / float(length + 1)
     sx = start.x
     sy = start.y
-    return [Point(x=sx + dx * i, y=sy + dy * i) for i in range(length)]
+    return [Point(x=sx + dx * i, y=sy + dy * i) for i in range(1, length+1)]
     
 
 def eff_sine(color, point, rate):
@@ -71,9 +74,22 @@ def eff_rainbow(vector, rate=5., alpha=1.0):
     def d(c, p, state):
         time = state.get("time", 0.)
         offset = (time / float(rate))
-        hue = ((p.x - offset * vector.x) + (p.y - offset * vector.y)) % 1.0
-        hue = 1.0 - hue
-        mc = Color(h = hue, s=1.0, v=1.0, a=alpha)
+        hue = offset + float((p.x * vector.x) + (p.y * vector.y)) 
+        #hue = hue % 1.0
+        mc = Color(h=0.0, s=1.0, v=1.0, a=alpha)
+        mc.set_yiq(y=0.5, i=math.sin(hue), q=math.cos(hue))
+        return mc.mix_onbg(c)
+    return d
+
+def eff_stripe(vector, color, rate=5., gamma=1.5):
+    mc = color.copy()
+    alpha = mc.a
+    def d(c, p, state):
+        time = state.get("time", 0.)
+        offset = (time / float(rate))
+        wv = offset + float((p.x * vector.x) + (p.y * vector.y)) 
+        value = (math.sin(wv) ** 2) ** gamma
+        mc.a = alpha * value
         return mc.mix_onbg(c)
     return d
 

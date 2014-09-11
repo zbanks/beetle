@@ -75,6 +75,10 @@ class Color(object):
         self.v = v
         self.rgb_from_hsv()
 
+    def set_yiq(self, y, i, q):
+        r, g, b = colorsys.yiq_to_rgb(y, i * 0.595, q * 0.522)
+        self.set_rgb(r, g, b)
+
     def hsv_from_rgb(self):
         self.h, self.s, self.v = colorsys.hsv_to_rgb(self.r, self.g, self.b)
 
@@ -86,11 +90,12 @@ class Color(object):
         return 0x8000 | (self.hw_b(self.b) << 10) | (self.hw_g(self.g)) | (self.hw_r(self.r) << 5)
 
     def hw_r(self, r):
-        return intr(self.a * r ** 2.2 * 0x1F)  & 0x1f
+        # alpha * X ** gamma * comp * max
+        return intr(self.a * r ** 1.0 * 1.0 * 0x1F)  & 0x1f
     def hw_g(self, g):
-        return intr(self.a * g  ** 3.0* 0x1F) & 0x1f
+        return intr(self.a * g  ** 1.0 * 0.5 *  0x1F) & 0x1f
     def hw_b(self, b):
-        return intr(self.a * b ** 3.0 * 0x1F) & 0x1f
+        return intr(self.a * b ** 1.0 * 0.5 * 0x1F) & 0x1f
 
     def __str__(self):
         return self.html_rgb
