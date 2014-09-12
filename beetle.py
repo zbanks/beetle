@@ -5,10 +5,10 @@ import pyaudio
 import struct
 import threading
 import time
-from pygame import midi 
 import traceback
 
 import doitlive
+from nanokontrol import NanoKontrol2, Map as NKMap
 from grassroots import grassroots as gr
 
 import projection
@@ -67,30 +67,10 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.projection = Plane()
         self.strip_config()
         self.enumerate_devices()
-        midi.init()
+        self.nk = NanoKontrol2()
         self.mi = None
-        try:
-            self.mi = midi.Input(3)
-        except:
-            traceback.print_exc()
-            print "Can't find midi. Continuing..."
         self.mstat = {}
         super(doitlive.SafeRefreshableLoop, self).__init__(*args, **kwargs)
-
-    def read_midi_events(self):
-        if not self.mi:
-            return
-        for ev in self.mi.read(100):
-            if len(ev[0]) == 4 and ev[0][0] == 176:
-                if ev[0][1] in MIDI_NAMES:
-                    self.mstat[MIDI_NAMES[ev[0][1]]] = ev[0][2]
-                else:
-                    self.mstat[ev[0][1]] = ev[0][2]
-
-    def inp(self, name, default=0):
-        if name in self.mstat:
-            return self.mstat[name]
-        return default
 
     def unsaturate(self):
         h = self.history[-1]
@@ -116,27 +96,33 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.strips[1].sid = 0x20
 
     def render_strips(self):
-        #self.projection.render_strip(self.strips[0])
         for strip in self.strips:
             self.projection.render_strip(strip)
-        #self.projection.render_strip(self.strips[0])
-        #for i, strip in enumerate(self.strips[1:]):
-            #strip.colors = self.projection.render(Point(0, i/10.), Point(1, i/10.), 20)
 
     def hw_export_strips(self):
         for strip in self.strips:
             for d in self.b:
-                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0x00)
-            break
+                try:
+                    d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0x10)
+                except:
+                    print("ERROR sending data! Reload hardware!")
+                    try:
+                        d.close()
+                    except:
+                        pass
+
         for d in self.b:
             d.flush()
 
     def step(self):
+        self.nk.process_input()
         self.ui.tick += 1
+
+        # --- Audio Math ---
+
         audio, fft = self.analyze_audio()
         self.write_spectrum(fft)
         def maxat(a): return max(enumerate(a), key=lambda x: x[1])[0] 
-        self.read_midi_events()
 
         #self.mind =20 #self.inp(24, 4)
         mind = self.min_fbin
@@ -151,7 +137,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         self.octave = octave
         self.hue = ((dom_freq - octave) / octave)
         self.hue = self.hue % 1.0
-        self.hue = (self.hue + (self.inp(16) / 127.0)) % 1.0
+        self.hue = (self.hue + self.nk.state[NKMap.KNOBS[0]]) % 1.0
         self.hue = sfilter("hue", data=self.hue, alpha=0.02, fn=lpf)
 
         self.lpf_audio=[lpf(float(data),mem,alpha=0.2)[0] for data,mem in zip(audio,self.lpf_audio)]
@@ -163,6 +149,9 @@ class Beetle(doitlive.SafeRefreshableLoop):
         scaling_factor=[max(max([d[j] for d in self.history]),1) for j in range(len(self.RANGES))]
 
         levels=[a/f for a,f in zip(self.lpf_audio,scaling_factor)]
+
+        # --- Color picking ---
+
         bass_val = max(min((levels[0]-0.1)/0.9,1.), 0.0)
         bass_val = sfilter("bass_val", data=bass_val, alpha=0.1, fn=lpf)
         bass_hue = (self.hue + 0.95) % 1.0
@@ -175,23 +164,24 @@ class Beetle(doitlive.SafeRefreshableLoop):
         treble_color= Color(h=self.hue, s=1.0 ,v=1.0, a=0.9 )
         bass_color= Color(h=bass_hue, s=1., v=bass_val, a=0.5)
 
+        # --- Projection ---
+        self.projection.state["time"] = time.time()
+
         #treble_size = (0.5-0.3*levels[1]) 
         treble_size = sfilter("treble_size", data=levels[1] , alpha=0.03, fn=diode_lpf)
 
-        self.projection.state["time"] = time.time()
-
         #bg_alpha = self.inp(32) / 127.0
-        treble_size *= self.inp(17) / 127.0
+        treble_size *= self.nk.state[NKMap.SLIDERS[0]]
         self.treble_size = treble_size
-        blackout = self.inp(0) / 127.0
-        whiteout = 1.0 - (self.inp(1) / 127.0)
-        whiteout_act = (self.inp(2) / 127.0)
-        solid_out = (self.inp(3) / 127.0)
+        blackout = self.nk.state[NKMap.SLIDERS[1]]
+        whiteout = 1.0 - self.nk.state[NKMap.SLIDERS[2]]
+        whiteout_act = self.nk.state[NKMap.SLIDERS[3]]
+        solid_out = self.nk.state[NKMap.SLIDERS[4]]
         bass_color.a = blackout
         solid_color = treble_color.copy()
         solid_color.a = solid_out
 
-        blackout_act = self.inp(6) / 127.0
+        blackout_act = self.nk.state[NKMap.SLIDERS[5]]
         blackout_act = sfilter("blackout", data=blackout_act, alpha=0.1, fn=diode_lpf)
     
 
@@ -204,19 +194,19 @@ class Beetle(doitlive.SafeRefreshableLoop):
                                    eff_solid(solid_color),
                                    #eff_solid(Color(r=0.0, g=0.0, b=0.0, a=whiteout)),
                                    ]
-        rainbow = self.inp(7) / 40.0 + 0.1
-        rainbow_alpha = self.inp(23) /127.0
-        if self.inp(71):
-            self.projection.effects.append(eff_rainbow(Point(0.5, 0.5), rainbow, alpha=rainbow_alpha))
+        rainbow = 0.05 +  0.5 * self.nk.state[NKMap.KNOBS[7]]
+        rainbow_alpha = self.nk.state[NKMap.SLIDERS[7]]
+        if self.nk.toggle_state[NKMap.RS[7]]:
+            self.projection.effects.append(eff_rainbow(Point(5, 5), rainbow, alpha=rainbow_alpha))
+        if self.nk.toggle_state[NKMap.MS[7]]:
+            self.projection.effects.append(eff_stripe(Point(5, 5), Color(r=1, g=0.0, b=0), rainbow, gamma=10.5))
 
-        amp = self.inp(22) / 127.0
-        if self.inp(55):
-            self.projection.effects.append(eff_sine(treble_color, Point(0.5, 0.5), amp))
+        #self.projection.effects.append(eff_sine(treble_color, Point(0.5, 0.5), amp))
 
-        self.projection.effects.append(eff_solid(Color(r=0.0, g=0.0, b=0.0, a=blackout_act)))
+        #self.projection.effects.append(eff_solid(Color(r=0.0, g=0.0, b=0.0, a=blackout_act)))
 
         solid_color.a = 0.8
-        self.projection.effects = [eff_solid(solid_color)]
+        #self.projection.effects = [eff_solid(solid_color)]
 
         #treble_size = levels[1]
         #time.sleep(0.5)

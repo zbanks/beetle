@@ -22,6 +22,22 @@ def points_along(start, end, length):
     sx = start.x
     sy = start.y
     return [Point(x=sx + dx * i, y=sy + dy * i) for i in range(1, length+1)]
+
+def timer(state, key, rate=1.0, start=False):
+    time = state.get('time', 0.)
+    last_time = state.get('last_time__{}'.format(key), time)
+    offset = state.get('offset__{}'.format(key), 0.)
+
+    time_delta = time - last_time
+    offset += time_delta / float(rate)
+
+    if start:
+        offset = 0.0
+
+    state['last_time__{}'.format(key)] = time
+    state['offset__{}'.format(key)] = offset
+    
+    return offset
     
 
 def eff_sine(color, point, rate):
@@ -32,8 +48,6 @@ def eff_sine(color, point, rate):
         rads = rng(rad / float(rate + 0.1) ** 2)
         mc.a = alpha * math.sin(rads)
         return  mc.mix_onbg(c)
-
-
 
 def eff_diamond(color, point, size):
     def d(c, p, state):
@@ -70,25 +84,29 @@ def eff_solid(color):
         return color.mix_onbg(c)
     return d
 
-def eff_rainbow(vector, rate=5., alpha=1.0):
+def eff_rainbow(vector, rate=5., alpha=1.0, key='rainbow'):
     def d(c, p, state):
         time = state.get("time", 0.)
-        offset = (time / float(rate))
+        offset = timer(state, key=key, rate=rate)
+
         hue = offset + float((p.x * vector.x) + (p.y * vector.y)) 
-        #hue = hue % 1.0
+
         mc = Color(h=0.0, s=1.0, v=1.0, a=alpha)
         mc.set_yiq(y=0.5, i=math.sin(hue), q=math.cos(hue))
+
         return mc.mix_onbg(c)
     return d
 
-def eff_stripe(vector, color, rate=5., gamma=1.5):
+def eff_stripe(vector, color, rate=5., gamma=2.5, key='stripe'):
     mc = color.copy()
     alpha = mc.a
     def d(c, p, state):
         time = state.get("time", 0.)
-        offset = (time / float(rate))
+        offset = timer(state, key=key, rate=rate)
+
         wv = offset + float((p.x * vector.x) + (p.y * vector.y)) 
         value = (math.sin(wv) ** 2) ** gamma
+
         mc.a = alpha * value
         return mc.mix_onbg(c)
     return d
