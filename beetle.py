@@ -215,6 +215,9 @@ class Beetle(doitlive.SafeRefreshableLoop):
 
         self.projection.effects.append(eff_solid(Color(r=0.0, g=0.0, b=0.0, a=blackout_act)))
 
+        solid_color.a = 0.8
+        self.projection.effects = [eff_solid(solid_color)]
+
         #treble_size = levels[1]
         #time.sleep(0.5)
         #self.i = (self.i + 1) % len(self.strips)
@@ -285,6 +288,7 @@ class Beetle(doitlive.SafeRefreshableLoop):
         for i in range(10):
             try:
                 self.b.append(devices.SingleBespeckleDevice('/dev/ttyUSB%d' % i, 3000000))
+                #self.b.append(devices.SingleBespeckleDevice('/dev/ttyUSB%d' % i, 115200))
                 if len(b) >= 4:
                     break
             except:

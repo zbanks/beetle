@@ -4,3 +4,6 @@
 [submodule "grassroots"]
 	path = grassroots
 	url = git@github.com:zbanks/grassroots
+[submodule "nanokontrol"]
+	path = nanokontrol
+	url = git@github.com:zbanks/nanokontrol
