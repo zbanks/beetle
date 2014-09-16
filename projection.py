@@ -29,7 +29,7 @@ def timer(state, key, rate=1.0, start=False):
     offset = state.get('offset__{}'.format(key), 0.)
 
     time_delta = time - last_time
-    offset += time_delta / float(rate)
+    offset += time_delta * float(rate)
 
     if start:
         offset = 0.0

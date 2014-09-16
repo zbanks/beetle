@@ -194,12 +194,17 @@ class Beetle(doitlive.SafeRefreshableLoop):
                                    eff_solid(solid_color),
                                    #eff_solid(Color(r=0.0, g=0.0, b=0.0, a=whiteout)),
                                    ]
-        rainbow = 0.05 +  0.5 * self.nk.state[NKMap.KNOBS[7]]
+        #rainbow = 20 * self.nk.state[NKMap.KNOBS[7]] - 10.0
+        rainbow = 12 * self.nk.state[NKMap.KNOBS[7]] ** 1.5
         rainbow_alpha = self.nk.state[NKMap.SLIDERS[7]]
+        if self.nk.toggle_state[NKMap.SS[7]]:
+            rainbow *= -1
         if self.nk.toggle_state[NKMap.RS[7]]:
             self.projection.effects.append(eff_rainbow(Point(5, 5), rainbow, alpha=rainbow_alpha))
         if self.nk.toggle_state[NKMap.MS[7]]:
-            self.projection.effects.append(eff_stripe(Point(5, 5), Color(r=1, g=0.0, b=0), rainbow, gamma=10.5))
+            self.projection.effects.append(eff_stripe(Point(5, 5), Color(r=1, g=0.0, b=0, a=rainbow_alpha), rainbow, gamma= 10 * self.nk.state[NKMap.KNOBS[6]] ** 3))
+        #if self.nk.toggle_state[NKMap.SS[7]]:
+            #self.projection.effects.append(eff_stripe(Point(.7, .7), Color(r=0, g=0.0, b=0, a=rainbow_alpha), rainbow, gamma= 10 * self.nk.state[NKMap.KNOBS[6]] ** 3))
 
         #self.projection.effects.append(eff_sine(treble_color, Point(0.5, 0.5), amp))
 
