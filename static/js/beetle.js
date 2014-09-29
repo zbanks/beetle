@@ -50,6 +50,26 @@
             $(".spectrum").text(value);
         });
 
+        ui.on("change:graph_data", function(model, value){
+            //console.log(value)
+            if(!value.length){ return; }
+            var $table = $("<table>");
+            var header = _.keys(value[0]).sort();
+            var $thead = $("<tr>").appendTo($table);
+            _.each(header, function(h){
+                $thead.append($("<th>").text(h));
+            });
+            _.each(value.reverse(), function(row){
+                var $tr = $("<tr>").appendTo($table);
+                _.each(header, function(h){
+                    var dat = row[h] || 0;
+                    var $td = $("<td>").appendTo($tr).width(101);
+                    var $s = $("<span>").appendTo($td).height("100%").width(dat * $td.width() + 1).css("background-color", "#336633").css('display', 'inline-block');
+                });
+            });
+            $(".levels").html($table);
+        });
+
         lsv = new LightStripsView({ collection: root.all.get("LightStrip"), el: "div.strip" });
         Backbone.listenTo(root.all.get("LightStrip"), "change", function(){
             lsv.render();

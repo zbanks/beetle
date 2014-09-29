@@ -4,11 +4,20 @@ import doitlive
 import math
 
 from grassroots import grassroots as gr
-from lights import Color, rng
+from lights import Color, rng, Black, yiq_from_phase
 
 Point = collections.namedtuple("Point", ["x", "y"])
 # Vector is exactly the same, but it's more readable
 Vector = collections.namedtuple("Vector", ["x", "y"])
+
+def dotp(v1, v2):
+    return v1.x * v2.x + v1.y * v2.y
+
+def dist2(v1, v2):
+    return (v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2
+
+def dist(v1, v2):
+    return dist2(v1, v2) ** 0.5
 
 def norm(v):
     return (v.x ** 2 + v.y ** 2) ** 0.5
@@ -16,7 +25,7 @@ def norm(v):
 def points_along(start, end, length):
     if length == 1:
         # Return the midpoint 
-        return Point(x=(start.x + end.x)/2, y=(start.y + end.y)/2)
+        return [Point(x=(start.x + end.x)/2, y=(start.y + end.y)/2)]
     dx = (end.x - start.x) / float(length + 1)
     dy = (end.y - start.y) / float(length + 1)
     sx = start.x
@@ -38,6 +47,15 @@ def timer(state, key, rate=1.0, start=False):
     state['offset__{}'.format(key)] = offset
     
     return offset
+
+def timeable(key, **kwargs):
+    def new_eff(eff_fn):
+        def f(c, p, state):
+            time = state.get("time", 0.)
+            offset = timer(state, key, **kwargs)
+            return eff_fn(c, p, state, offset)
+        return f
+    return new_eff
     
 
 def eff_sine(color, point, rate):
@@ -56,13 +74,15 @@ def eff_diamond(color, point, size):
         return c
     return d
 
-def eff_circle(color, point, size):
+def eff_circle(color, point, size, gamma=10):
     mc = color.copy()
     alpha = mc.a
     def d(c, p, state):
-        rad = (p.x - point.x) ** 2 + (p.y - point.y) ** 2
-        rads = rng(rad / float(size + 0.1) ** 2)
-        mc.a = alpha * (1.0 - rads)
+        rad = dist(p, point)
+        if rad <= size:
+            mc.a = alpha
+        else:
+            mc.a = alpha * math.exp((size - rad) * gamma)
         return mc.mix_onbg(c)
     return d
 
@@ -84,29 +104,43 @@ def eff_solid(color):
         return color.mix_onbg(c)
     return d
 
-def eff_rainbow(vector, rate=5., alpha=1.0, key='rainbow'):
-    def d(c, p, state):
-        time = state.get("time", 0.)
-        offset = timer(state, key=key, rate=rate)
-
-        hue = offset + float((p.x * vector.x) + (p.y * vector.y)) 
-
-        mc = Color(h=0.0, s=1.0, v=1.0, a=alpha)
-        mc.set_yiq(y=0.5, i=math.sin(hue), q=math.cos(hue))
+def eff_rainbow(vector, rate=5., alpha=1.0, kappa=1.0, y=0.5, key='rainbow'):
+    @timeable(key=key, rate=rate)
+    def d(c, p, state, offset):
+        hue = (offset + dotp(p, vector) ) % 1.0
+        mc = yiq_from_phase(y=y, phase=hue, kappa=kappa, a=alpha)
 
         return mc.mix_onbg(c)
     return d
 
-def eff_stripe(vector, color, rate=5., gamma=2.5, key='stripe'):
+def eff_hsv_rainbow(vector, rate=5., alpha=1.0, key='rainbow_hsv'):
+    @timeable(key=key, rate=rate)
+    def d(c, p, state, offset):
+        hue = (offset + dotp(p, vector) ) % 1.0
+        mc = Color(h=hue, s=1.0, v=1.0, a=alpha)
+        #mc = Color(h=hue, s=1.0, v=1.0, a=alpha)
+        mc = yiq_from_phase(y=0.4, phase=hue, kappa=1.9, a=alpha)
+
+        return mc.mix_onbg(c)
+    return d
+
+def eff_stripe_time(vector, color, rate=5., gamma=2.5, key='stripe'):
+    mc = color.copy()
+    alpha = mc.a
+    @timeable(key=key, rate=rate)
+    def d(c, p, state, offset):
+        wv = offset + dotp(p, vector)
+        value = (math.sin(wv) ** 2) ** gamma
+        mc.a = alpha * value
+        return mc.mix_onbg(c)
+    return d
+
+def eff_stripe_beat(vector, color, offset, gamma=2.5):
     mc = color.copy()
     alpha = mc.a
     def d(c, p, state):
-        time = state.get("time", 0.)
-        offset = timer(state, key=key, rate=rate)
-
-        wv = offset + float((p.x * vector.x) + (p.y * vector.y)) 
+        wv = offset + dotp(p, vector)
         value = (math.sin(wv) ** 2) ** gamma
-
         mc.a = alpha * value
         return mc.mix_onbg(c)
     return d

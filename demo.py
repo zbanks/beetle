@@ -68,7 +68,7 @@ class DemoLightApp(gr.Blade, doitlive.SafeRefreshableLoop):
     def hw_export_strips(self):
         for strip in self.strips:
             for d in self.b:
-                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0xF0)
+                d.framed_packet(data=strip.hw_export(), addr=strip.sid, flags=0x00)
         for d in self.b:
             d.flush()
 

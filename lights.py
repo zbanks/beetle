@@ -13,6 +13,8 @@ def rng(x):
 def intr(x):
     return int(round(x))
 
+
+
 class Color(object):
     __slots__ = ["r", "g", "b", "h", "s", "v", "a"]
     def __init__(self, r=None, g=None, b=None, h=None, s=None, v=None, a=1.0):
@@ -87,7 +89,10 @@ class Color(object):
 
     def hw_export(self):
         #TODO: export to 15-bit RGB
-        return 0x8000 | (self.hw_b(self.b) << 10) | (self.hw_g(self.g)) | (self.hw_r(self.r) << 5)
+        output =  0x8000 | (self.hw_b(self.b) << 10) | (self.hw_g(self.g)) | (self.hw_r(self.r) << 5)
+        if output == (0x8000 | 1 << 5):
+            output = 0x8000
+        return output
 
     def hw_r(self, r):
         # alpha * X ** gamma * comp * max
@@ -108,6 +113,18 @@ class Color(object):
         f = lambda x: int(round(x * 255 * self.a))
         return "rgb({}, {}, {})".format(f(self.r), f(self.g), f(self.b))
 
+Black = lambda: Color(r=0, g=0, b=0, a=1)
+White = lambda: Color(r=1, g=1, b=1, a=1)
+
+def yiq_from_phase(y=0.5, phase=0.0, kappa=1.0, a=1.0):
+    sign = lambda x: -1 if x < 0 else 1
+    hues, huec = math.sin(phase * 2 * math.pi), math.cos(phase * 2 * math.pi)
+    i = abs(hues) ** kappa * sign(hues)
+    q = abs(huec) ** kappa * sign(huec)
+    color = Black()
+    color.set_yiq(y=y, i=i, q=q)
+    color.a = a
+    return color
 
 class LightStrip(gr.Blade):
     sid = gr.Field(0)

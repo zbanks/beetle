@@ -4,6 +4,7 @@ from beetle import *
 def main():
     beetle, ui, groot, webthread = setup()
     b = beetle
+    self = beetle
     webthread.start()
     stop = lambda: webthread.stop()
     variables = locals()
